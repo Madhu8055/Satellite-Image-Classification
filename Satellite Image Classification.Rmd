@@ -1,0 +1,229 @@
+---
+title: "SML Assignment - 03"
+author: "MADHUSUDHAN ASHWATH - 19203116"
+date: "4/19/2020"
+output: word_document
+---
+
+# Library files
+
+```{r, warning= FALSE }
+
+# Install the packages
+install.packages("mlbench")
+install.packages("nnet")
+install.packages("randomForest")
+
+```
+
+```{r, warning= FALSE }
+
+# Load the packages
+library(mlbench)
+library(nnet)
+library(randomForest)
+```
+
+# Setting up data
+
+About Data Set :
+1.	The data set consists of 37 variables and 6435 observation.
+2.	Multi-spectral values of pixels n 3x3 neighborhood’s in a satellite image.
+3.	The images are classified into 6 types
+  a.	cotton_crop
+  b.	damp_grey_soil
+  c.	grey_soil
+  d.	red_soil
+  e.	soil_with_vegatation_stubble
+  f.	very_damp_grey_soil
+
+```{r}
+# Import data
+data("Satellite")
+
+# Removing spaces and factorizing
+Satellite$classes = gsub(" ", "_", Satellite$classes)
+Satellite$classes = factor(as.character(Satellite$classes))
+```
+
+# Splitting of data, Seting the trail
+
+```{r}
+
+# Setting seed
+set.seed(777222)
+
+# Number of rows
+D = nrow(Satellite)
+
+# Sampling the data
+keep = sample(1:D, 5500)
+test = setdiff(1:D, keep)
+dat = Satellite[keep,]
+dat_test = Satellite[test,]
+
+# Converting to factors
+dat$classes = factor(dat$classes)
+dat_test$classes = factor(dat_test$classes)
+
+# Row counts
+
+d_count = nrow(dat)
+dt_count = nrow(dat_test)
+
+# Trails
+
+trail = 100
+
+# Matirx to store the output
+
+mat = matrix(NA , trail , 4)
+mat = as.data.frame(mat)
+
+# Changing the column name for ploting
+colnames(mat) = c("Multinomial" , "RandomForest", "BestFit" , "Test")
+
+
+```
+
+Procedure: 
+
+1.	Split the data into 3 parts.
+  a.	Training set
+  b.	Test Set
+  c.	Validation Set
+2.	Test which model is more accurate Multinomial Regression or Random forest.
+3.	Both the models are fitted to training data to predict the model
+4.	Validation data set is used to determine the accuracy between the models.
+5.	The model with the highest accuracy will be the best.
+6.	The above procedure is ran for 100 trails.
+7.	The accuracy is noted in a form of matrix(in our analysis).
+8.	The summary of the best model with good accuracy is obtained.
+9.	Box plot is shown to see the data summary.
+10.	Later plot a graph of accuracy v/s the trails for both the model.
+
+# Model Building, Classifier Comparission
+
+```{r}
+# Looping for all the trails
+for (n in 1 : trail) 
+  {
+  # training and validation sets
+  print(paste0("Trials :", n))
+  
+  ## 75% of data as training set
+  dat_train = sample(1:d_count, size = 0.75*d_count)  
+  
+  ## 25% of data as Validation set
+  dat_val = sample(setdiff(1:d_count, dat_train), size = 0.25*d_count)
+  
+  # Model Building
+  
+  ## Multinomial Regression
+  fit = multinom(classes ~ ., data = dat, subset = dat_train, maxit = 500)
+  
+  ## Random Forest
+  fitrf = randomForest(classes ~ ., data = dat, subset = dat_train, importance = TRUE)
+ 
+  # Ovservation of Validation data
+  
+  ## Multinomial Regression
+  pred = predict(fit, newdata =  dat[dat_val,])
+  tab = table(dat$classes[dat_val], pred)
+  accmr = sum(diag(tab))/sum(tab)
+
+  # Random Forest
+  predrf = predict(fitrf,newdata =  dat[dat_val,])
+  tabrf = table(dat$classes[dat_val], predrf)
+  accrf = sum(diag(tabrf))/sum(tabrf)
+ 
+  # Storing onto matrix
+  acc = c(Multinomial = accmr , RandomForest = accrf)
+  mat[n,1] = accmr
+  mat[n,2] = accrf
+  
+  
+  # Calculationg of accuracy
+  BestFit = names(which.max(acc))
+  switch(BestFit,
+         ## Multinomial Regression
+         Multinomial = 
+           {
+           predtest = predict(fit, newdata = dat_test)
+           tabtest = table(dat_test$classes, predtest)
+           accbest = sum(diag(tabtest))/sum(tabtest)
+           },
+         ## Random Forest
+         RandomForest = 
+           {
+           predtestrf = predict(fitrf, newdata = dat_test)
+           tabtestrf = table(dat_test$classes, predtestrf)
+           accbest = sum(diag(tabtestrf))/sum(tabtestrf)
+          }
+  )
+  mat[n,3] = BestFit
+  mat[n,4] = accbest
+}
+
+# Tabulating the result
+
+table(mat[,3])
+tapply(mat[,4], mat[,3], summary)
+
+```
+
+# Box Plot
+
+```{r}
+# Plotting Box plot to observe the distrubution
+# Box plot
+boxplot(mat$Test ~ mat$BestFit)
+stripchart(mat$Test ~ mat$BestFit , add = TRUE, vertical = TRUE, method = "jitter", pch = 15, col = adjustcolor("red", 0.5))
+
+```
+
+# standard deviation for plot
+
+```{r}
+average = t(lapply(mat[,1:2], mean))
+print("Average")
+average
+std = apply(mat[,1:2], 2, sd)/sqrt(trail)
+std = as.matrix(std)
+print("Standard Deviation")
+std
+
+```
+
+# Plot of Multinomial Regression v/s Random  Forest
+
+```{r}
+# plot the values
+matplot(mat[,1:2], type = "l", lty = c(2,3), col = c("red","purple"), xlab = "Trails-Samples", ylab = "Accuracy",main = "Multinomial Regression v/s Random  Forest", ylim = c(0.80, 0.95), xlim = c(0, 100))
+
+# Mean Line
+abline(h = average, col = c("red", "purple"))
+
+# Setting the intervals
+upper = rep(c(average[[2]]-2*std[2], average[[2]]+2*std[2]), each = trail)
+lower = rep(c(average[[1]]-2*std[1], average[[1]]+2*std[1]), each = trail)
+polygon(c(1:trail, trail:1), lower, col = adjustcolor("red", 0.2), border = FALSE)
+polygon(c(1:trail, trail:1), upper, col = adjustcolor("purple", 0.2), border = FALSE)
+
+# Legend
+legend("bottomright", fill = c("purple" , "red"),
+       legend = c("Random forest" , "Multinomial regression"), bty = "y")
+
+```
+
+Analysis:
+
+1.	It is seen that the accuracy of the random forest model is the best as it has an accuracy of 0.9523.
+2.	The accuracy of the model varied from 0.932 to 0.9701.
+3.	Thus can conclude that the random forest model has a high classification rate. 
+4.	Seeing the performance of the classifier, can see that the mean predictive performance of random forest is above 90%, which implies high predictive performance.
+5.	The prediction speed is significantly faster than training speed because the generated values can be saved for future uses.
+6.	It is capable of handling outliers by binning them.
+7.	Minimizes the overall error rate for unbalanced dataset.
+8.	Based on all the above points we can conclude random forest is the best model with good accuracy and better predictor overall.
+
